@@ -37,4 +37,4 @@ dnsmasq-install:
 	sudo cp dnsmasq/trivia.tyrelparker.dev.conf /etc/dnsmasq.d/ && sudo systemctl restart dnsmasq
 
 shell-db:
-	docker compose exec db psql -U $$(grep POSTGRES_USER .env | cut -d= -f2) $$(grep POSTGRES_DB .env | cut -d= -f2)
+	docker compose exec trivia-db psql -U $$(grep POSTGRES_USER .env | cut -d= -f2) $$(grep POSTGRES_DB .env | cut -d= -f2)

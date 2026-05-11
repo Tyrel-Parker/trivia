@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: trivia-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -8,7 +9,9 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
-      - trivia_net
+      trivia_net:
+        aliases:
+          - trivia-db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -22,7 +25,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: db
+      POSTGRES_HOST: trivia-db
       JWT_SECRET: ${JWT_SECRET}
       DISMISS_SECRET: ${DISMISS_SECRET}
       FRONTEND_URL: http://localhost:5173
