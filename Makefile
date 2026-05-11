@@ -11,7 +11,6 @@ setup:
 	else \
 		echo ".env already exists, skipping"; \
 	fi
-	$(MAKE) dnsmasq-install
 	docker compose up -d --build db backend
 	@echo "Waiting for db to be healthy..."
 	@until docker compose exec db pg_isready -U $$(grep POSTGRES_USER .env | cut -d= -f2) > /dev/null 2>&1; do sleep 1; done
