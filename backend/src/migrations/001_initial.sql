@@ -1,0 +1,38 @@
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'user',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS facts (
+  id SERIAL PRIMARY KEY,
+  short_description TEXT NOT NULL,
+  long_description TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS profiles (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  ntfy_topic VARCHAR(200) NOT NULL,
+  send_frequency_hours INTEGER NOT NULL DEFAULT 4,
+  cycling_order VARCHAR(20) NOT NULL DEFAULT 'shuffle',
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  last_notified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS profile_facts (
+  id SERIAL PRIMARY KEY,
+  profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE,
+  fact_id INTEGER REFERENCES facts(id) ON DELETE CASCADE,
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  removed BOOLEAN NOT NULL DEFAULT FALSE,
+  last_sent_at TIMESTAMPTZ,
+  send_count INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(profile_id, fact_id)
+);

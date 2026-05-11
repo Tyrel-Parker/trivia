@@ -1,0 +1,69 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - trivia_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    environment:
+      NODE_ENV: development
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: db
+      JWT_SECRET: ${JWT_SECRET}
+      DISMISS_SECRET: ${DISMISS_SECRET}
+      FRONTEND_URL: http://localhost:5173
+      NTFY_URL: ${NTFY_URL}
+      NTFY_TOKEN: ${NTFY_TOKEN}
+    volumes:
+      - ./backend/src:/app/src
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - proxy
+      - trivia_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.trivia-api.rule=Host(`api.trivia.tyrelparker.dev`)"
+      - "traefik.http.routers.trivia-api.entrypoints=web"
+      - "traefik.http.services.trivia-api.loadbalancer.server.port=3001"
+
+  frontend:
+    build: ./frontend
+    networks:
+      - proxy
+      - trivia_net
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.trivia.rule=Host(`trivia.tyrelparker.dev`)"
+      - "traefik.http.routers.trivia.entrypoints=web"
+      - "traefik.http.services.trivia.loadbalancer.server.port=80"
+    profiles:
+      - prod
+
+networks:
+  proxy:
+    external: true
+  trivia_net:
+    driver: bridge
+
+volumes:
+  db_data:
