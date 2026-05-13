@@ -6,7 +6,9 @@ const authRoutes = require('./routes/auth');
 const factsRoutes = require('./routes/facts');
 const profilesRoutes = require('./routes/profiles');
 const dismissRoutes = require('./routes/dismiss');
+const categoriesRoutes = require('./routes/categories');
 const { startScheduler } = require('./scheduler');
+const { seedAdmin } = require('./seed');
 
 const app = express();
 
@@ -17,9 +19,11 @@ app.use('/auth', authRoutes);
 app.use('/facts', factsRoutes);
 app.use('/profiles', profilesRoutes);
 app.use('/dismiss', dismissRoutes);
+app.use('/categories', categoriesRoutes);
 
 const PORT = 3001;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Backend running on port ${PORT}`);
+  await seedAdmin();
   startScheduler();
 });

@@ -52,7 +52,7 @@ async function sendNotificationForProfile(profile) {
   );
 
   const viewUrl = `${process.env.FRONTEND_URL}/facts/${fact.fact_id}`;
-  const dismissUrl = `${process.env.FRONTEND_URL?.replace('trivia', 'api.trivia')}/dismiss/${dismissToken}`;
+  const dismissUrl = `${process.env.FRONTEND_URL}/api/dismiss/${dismissToken}`;
 
   await publish({
     topic: profile.ntfy_topic,
@@ -76,7 +76,7 @@ async function checkProfiles() {
   const { rows: profiles } = await pool.query('SELECT * FROM profiles');
 
   for (const profile of profiles) {
-    const frequencyMs = profile.send_frequency_hours * 60 * 60 * 1000;
+    const frequencyMs = profile.send_frequency_minutes * 60 * 1000;
     const lastNotified = profile.last_notified_at ? new Date(profile.last_notified_at).getTime() : 0;
     const due = Date.now() - lastNotified >= frequencyMs;
 

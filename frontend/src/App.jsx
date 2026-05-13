@@ -9,6 +9,7 @@ import FactList from './pages/FactList';
 import FactForm from './pages/FactForm';
 import ProfileList from './pages/ProfileList';
 import ProfileDetail from './pages/ProfileDetail';
+import CategoryList from './pages/CategoryList';
 
 export const AuthContext = createContext(null);
 
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="/facts/:id/edit" element={<ProtectedRoute><FactForm /></ProtectedRoute>} />
           <Route path="/profiles" element={<ProtectedRoute><ProfileList /></ProtectedRoute>} />
           <Route path="/profiles/:id" element={<ProtectedRoute><ProfileDetail /></ProtectedRoute>} />
+          <Route path="/categories" element={<ProtectedRoute><CategoryList /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>

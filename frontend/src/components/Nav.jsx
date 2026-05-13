@@ -19,6 +19,7 @@ export default function Nav() {
           <Link to="/facts">Facts</Link>
           <Link to="/facts/new">Add Fact</Link>
           <Link to="/profiles">Profiles</Link>
+          {user.role === 'admin' && <Link to="/categories">Categories</Link>}
           <span style={{ marginLeft: 'auto' }}>{user.username}</span>
           <button onClick={handleLogout}>Logout</button>
         </>

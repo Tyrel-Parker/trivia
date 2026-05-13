@@ -1,5 +1,7 @@
 APP = trivia
 
+.PHONY: setup dev prod frontend down logs cleanup migrate shell-db
+
 setup:
 	docker network create proxy 2>/dev/null || true
 	@if [ ! -f .env ]; then \
@@ -11,30 +13,42 @@ setup:
 	else \
 		echo ".env already exists, skipping"; \
 	fi
-	docker compose up -d --build db backend
+	docker compose up -d --build
 	@echo "Waiting for db to be healthy..."
 	@until docker compose exec db pg_isready -U $$(grep POSTGRES_USER .env | cut -d= -f2) > /dev/null 2>&1; do sleep 1; done
 	docker compose exec backend npm run migrate
 
 dev:
-	docker compose up -d --build db backend
-	cd frontend && npm run dev
+	@if [ ! -f /etc/dnsmasq.d/$(APP).tyrelparker.dev.conf ]; then \
+		sudo cp dnsmasq/$(APP).tyrelparker.dev.conf /etc/dnsmasq.d/; \
+		sudo systemctl restart dnsmasq; \
+		echo "dnsmasq configured"; \
+	fi
+	docker compose up -d --build
 
 prod:
-	NODE_ENV=production FRONTEND_URL=https://trivia.tyrelparker.dev \
-	docker compose --profile prod up -d --build
+	NODE_ENV=production docker compose up -d --build
+
+frontend:
+	docker compose up -d --build frontend
 
 down:
-	docker compose --profile prod down
+	docker compose down
 
 logs:
 	docker compose logs -f
 
+cleanup:
+	@if [ -f /etc/dnsmasq.d/$(APP).tyrelparker.dev.conf ]; then \
+		sudo rm /etc/dnsmasq.d/$(APP).tyrelparker.dev.conf; \
+		sudo systemctl restart dnsmasq; \
+		echo "dnsmasq config removed"; \
+	else \
+		echo "no dnsmasq config found, skipping"; \
+	fi
+
 migrate:
 	docker compose exec backend npm run migrate
 
-dnsmasq-install:
-	sudo cp dnsmasq/trivia.tyrelparker.dev.conf /etc/dnsmasq.d/ && sudo systemctl restart dnsmasq
-
 shell-db:
-	docker compose exec trivia-db psql -U $$(grep POSTGRES_USER .env | cut -d= -f2) $$(grep POSTGRES_DB .env | cut -d= -f2)
+	docker compose exec db psql -U $$(grep POSTGRES_USER .env | cut -d= -f2) $$(grep POSTGRES_DB .env | cut -d= -f2)

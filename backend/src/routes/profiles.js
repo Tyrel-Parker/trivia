@@ -25,15 +25,37 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json(profile);
 });
 
-// Admin: create a profile
+// Admin: create a profile (and its associated user account)
 router.post('/', requireAdmin, async (req, res) => {
-  const { name, ntfy_topic, send_frequency_hours = 4, cycling_order = 'shuffle', user_id } = req.body;
-  if (!name || !ntfy_topic || !user_id) return res.status(400).json({ error: 'name, ntfy_topic, user_id required' });
-  const { rows } = await pool.query(
-    'INSERT INTO profiles (name, ntfy_topic, send_frequency_hours, cycling_order, user_id) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-    [name, ntfy_topic, send_frequency_hours, cycling_order, user_id]
-  );
-  res.status(201).json(rows[0]);
+  const { name, ntfy_topic, send_frequency_minutes = 4, cycling_order = 'shuffle', username, password } = req.body;
+  if (!name || !ntfy_topic || !username || !password) {
+    return res.status(400).json({ error: 'name, ntfy_topic, username, password required' });
+  }
+
+  const bcrypt = require('bcrypt');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const hash = await bcrypt.hash(password, 10);
+    const { rows: userRows } = await client.query(
+      'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id',
+      [username, hash, 'user']
+    );
+    const { rows } = await client.query(
+      'INSERT INTO profiles (name, ntfy_topic, send_frequency_minutes, cycling_order, user_id) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [name, ntfy_topic, send_frequency_minutes, cycling_order, userRows[0].id]
+    );
+    await client.query('COMMIT');
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.constraint === 'users_username_key') {
+      return res.status(409).json({ error: 'Username already taken' });
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 // Admin or owner: update a profile
@@ -42,15 +64,15 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (!existing[0]) return res.status(404).json({ error: 'Not found' });
   if (!canAccessProfile(req.user, existing[0])) return res.status(403).json({ error: 'Forbidden' });
 
-  const { name, ntfy_topic, send_frequency_hours, cycling_order } = req.body;
+  const { name, ntfy_topic, send_frequency_minutes, cycling_order } = req.body;
   const { rows } = await pool.query(
     `UPDATE profiles SET
       name = COALESCE($1, name),
       ntfy_topic = COALESCE($2, ntfy_topic),
-      send_frequency_hours = COALESCE($3, send_frequency_hours),
+      send_frequency_minutes = COALESCE($3, send_frequency_minutes),
       cycling_order = COALESCE($4, cycling_order)
      WHERE id = $5 RETURNING *`,
-    [name || null, ntfy_topic || null, send_frequency_hours || null, cycling_order || null, req.params.id]
+    [name || null, ntfy_topic || null, send_frequency_minutes || null, cycling_order || null, req.params.id]
   );
   res.json(rows[0]);
 });
@@ -69,11 +91,12 @@ router.get('/:id/facts', requireAuth, async (req, res) => {
   if (!canAccessProfile(req.user, existing[0])) return res.status(403).json({ error: 'Forbidden' });
 
   const { rows } = await pool.query(
-    `SELECT f.*, pf.added_at, pf.last_sent_at, pf.send_count
+    `SELECT f.*, c.name as category_name, pf.added_at, pf.last_sent_at, pf.send_count
      FROM profile_facts pf
      JOIN facts f ON pf.fact_id = f.id
+     LEFT JOIN categories c ON f.category_id = c.id
      WHERE pf.profile_id = $1 AND pf.removed = FALSE
-     ORDER BY pf.added_at DESC`,
+     ORDER BY lower(c.name) NULLS LAST, lower(f.short_description)`,
     [req.params.id]
   );
   res.json(rows);
@@ -89,8 +112,8 @@ router.post('/:id/facts', requireAuth, async (req, res) => {
   if (!fact_id) return res.status(400).json({ error: 'fact_id required' });
 
   const { rows } = await pool.query(
-    `INSERT INTO profile_facts (profile_id, fact_id)
-     VALUES ($1, $2)
+    `INSERT INTO profile_facts (profile_id, fact_id, send_count)
+     VALUES ($1, $2, COALESCE((SELECT MIN(send_count) FROM profile_facts WHERE profile_id = $1 AND removed = FALSE), 0))
      ON CONFLICT (profile_id, fact_id) DO UPDATE SET removed = FALSE, added_at = NOW()
      RETURNING *`,
     [req.params.id, fact_id]
