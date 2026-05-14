@@ -8,6 +8,7 @@ A self-hosted trivia/fact notification app. Add facts to a library, assign them 
 - **Profiles** represent people who receive notifications. Each profile has its own ntfy topic, notification frequency, and fact cycling order. Creating a profile also creates the login account for that person.
 - The **scheduler** runs every minute and checks whether each profile is due for a notification based on `last_notified_at` and `send_frequency_hours`. When due, it picks the next fact according to the profile's cycling order and publishes it to ntfy.
 - Notifications include two action buttons: **View** (opens the fact detail page) and **Remove from list** (removes the fact from that profile via a signed one-time token — no login required).
+- Each profile can have **quiet hours** — a start and end hour (24h) during which no notifications are sent. The window wraps midnight (e.g. 21:00–09:00). Times are evaluated in the profile's stored timezone if set, otherwise server local time.
 
 ### Cycling modes
 
@@ -74,6 +75,32 @@ Log in as admin, go to **Profiles → New Profile**, and fill in:
 - **Username / Password** — login credentials for this person
 
 The user account is created at the same time as the profile in a single transaction.
+
+## Quiet hours
+
+Each profile can suppress notifications during a configured window. Open the profile's **Edit Settings**, check **Quiet hours**, and set a start and end hour (24h format). The window wraps midnight correctly — `21:00–09:00` means no notifications from 9 pm to 9 am.
+
+Times are evaluated against the profile's stored timezone (see below). If no timezone is set, server local time is used as a fallback.
+
+## Timezone-aware quiet hours (Tasker)
+
+By default quiet hours use server local time. If you want the window to follow your phone's timezone (e.g. when travelling), you can have your Android phone report its current timezone to the server automatically using [Tasker](https://play.google.com/store/apps/details?id=net.dinglisch.android.taskerm).
+
+### One-time setup
+
+1. In the profile's **Edit Settings**, click **Generate** under *Device token* to create a token for that profile.
+2. The section shows a pre-filled Tasker config. In Tasker, create:
+   - **Profile** trigger: *System → Timezone Changed*
+   - **Task** action: *Net → HTTP Request*
+     - Method: `POST`
+     - URL: `https://trivia.tyrelparker.dev/api/profiles/<id>/timezone`
+     - Headers: `Authorization: Bearer <your device token>`
+     - Body: `{"timezone":"%TZONE"}`  (`%TZONE` is Tasker's built-in current timezone variable)
+3. Run the task once manually to seed the initial value.
+
+After that Tasker fires silently whenever the timezone changes. The server uses the stored timezone for all quiet-hour calculations for that profile.
+
+The device token can be regenerated at any time from the profile settings if needed.
 
 ## Adding facts to a profile
 

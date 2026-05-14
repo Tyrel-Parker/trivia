@@ -3,6 +3,19 @@ import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../App';
 
+const HOURS = Array.from({ length: 24 }, (_, i) => ({
+  value: i,
+  label: `${String(i).padStart(2, '0')}:00`,
+}));
+
+function HourSelect({ value, onChange }) {
+  return (
+    <select value={value} onChange={e => onChange(Number(e.target.value))}>
+      {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+    </select>
+  );
+}
+
 function splitFrequency(minutes) {
   if (minutes % 60 === 0) return { freq_value: minutes / 60, freq_unit: 'hours' };
   return { freq_value: minutes, freq_unit: 'minutes' };
@@ -26,9 +39,20 @@ export default function ProfileDetail() {
   const [error, setError] = useState('');
   const [bulkAdding, setBulkAdding] = useState(false);
   const [factsExpanded, setFactsExpanded] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
-    api.get(`/profiles/${id}`).then(p => { setProfile(p); setEditForm({ ...p, ...splitFrequency(p.send_frequency_minutes) }); }).catch(console.error);
+    api.get(`/profiles/${id}`).then(p => {
+      setProfile(p);
+      setEditForm({
+        ...p,
+        ...splitFrequency(p.send_frequency_minutes),
+        quiet_enabled: p.quiet_start_hour != null && p.quiet_end_hour != null,
+        quiet_start_hour: p.quiet_start_hour ?? 21,
+        quiet_end_hour: p.quiet_end_hour ?? 9,
+      });
+    }).catch(console.error);
     api.get(`/profiles/${id}/facts`).then(setProfileFacts).catch(console.error);
     api.get('/facts').then(setAllFacts).catch(console.error);
     api.get('/categories').then(setCategories).catch(console.error);
@@ -42,12 +66,31 @@ export default function ProfileDetail() {
         ntfy_topic: editForm.ntfy_topic,
         send_frequency_minutes: toMinutes(editForm.freq_value, editForm.freq_unit),
         cycling_order: editForm.cycling_order,
+        quiet_start_hour: editForm.quiet_enabled ? Number(editForm.quiet_start_hour) : null,
+        quiet_end_hour:   editForm.quiet_enabled ? Number(editForm.quiet_end_hour)   : null,
       });
       setProfile(updated);
       setEditing(false);
     } catch (err) {
       setError(err.message);
     }
+  }
+
+  async function handleRegenerateToken() {
+    setRegenerating(true);
+    try {
+      const updated = await api.post(`/profiles/${id}/device-token`, {});
+      setProfile(updated);
+      setEditForm(f => ({ ...f, device_token: updated.device_token }));
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  function handleCopyToken() {
+    navigator.clipboard.writeText(editForm.device_token || '');
+    setTokenCopied(true);
+    setTimeout(() => setTokenCopied(false), 2000);
   }
 
   async function handleAddFact(factId) {
@@ -115,6 +158,60 @@ export default function ProfileDetail() {
               <option value="random">Random</option>
             </select>
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={!!editForm.quiet_enabled}
+              onChange={e => setEditForm(f => ({ ...f, quiet_enabled: e.target.checked }))}
+            />
+            Quiet hours
+          </label>
+          {editForm.quiet_enabled && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1.5rem' }}>
+              <HourSelect
+                value={editForm.quiet_start_hour}
+                onChange={v => setEditForm(f => ({ ...f, quiet_start_hour: v }))}
+              />
+              <span>to</span>
+              <HourSelect
+                value={editForm.quiet_end_hour}
+                onChange={v => setEditForm(f => ({ ...f, quiet_end_hour: v }))}
+              />
+              <span style={{ fontSize: '0.85rem', color: '#888' }}>
+                (no notifications during this window)
+              </span>
+            </div>
+          )}
+          <hr style={{ margin: '0.5rem 0', border: 'none', borderTop: '1px solid #eee' }} />
+          <div style={{ fontSize: '0.85rem', color: '#555' }}>
+            <strong>Device token</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+              <code style={{ flex: 1, padding: '0.25rem 0.4rem', background: '#f5f5f5', borderRadius: 3, wordBreak: 'break-all', fontSize: '0.8rem' }}>
+                {editForm.device_token || <em>none — click Regenerate to create one</em>}
+              </code>
+              {editForm.device_token && (
+                <button type="button" onClick={handleCopyToken} style={{ whiteSpace: 'nowrap' }}>
+                  {tokenCopied ? 'Copied!' : 'Copy'}
+                </button>
+              )}
+              <button type="button" onClick={handleRegenerateToken} disabled={regenerating} style={{ whiteSpace: 'nowrap' }}>
+                {regenerating ? 'Generating…' : editForm.device_token ? 'Regenerate' : 'Generate'}
+              </button>
+            </div>
+            {editForm.device_token && (
+              <div style={{ marginTop: '0.5rem', color: '#888' }}>
+                <strong>Tasker HTTP Request action:</strong>
+                <div>Method: POST</div>
+                <div style={{ wordBreak: 'break-all' }}>URL: {window.location.origin}/api/profiles/{id}/timezone</div>
+                <div>Header: <code>Authorization: Bearer {editForm.device_token}</code></div>
+                <div>Body (JSON): <code>{'{"timezone":"%TZONE"}'}</code></div>
+                <div style={{ marginTop: '0.25rem' }}>Trigger: <em>System &gt; Timezone Changed</em> (or run hourly)</div>
+              </div>
+            )}
+            {profile.timezone && (
+              <div style={{ marginTop: '0.35rem' }}>Current timezone: <strong>{profile.timezone}</strong></div>
+            )}
+          </div>
           {error && <p style={{ color: 'red' }}>{error}</p>}
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button type="submit">Save</button>

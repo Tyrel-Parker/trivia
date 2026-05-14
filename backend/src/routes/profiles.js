@@ -64,15 +64,28 @@ router.put('/:id', requireAuth, async (req, res) => {
   if (!existing[0]) return res.status(404).json({ error: 'Not found' });
   if (!canAccessProfile(req.user, existing[0])) return res.status(403).json({ error: 'Forbidden' });
 
-  const { name, ntfy_topic, send_frequency_minutes, cycling_order } = req.body;
+  const { name, ntfy_topic, send_frequency_minutes, cycling_order, quiet_start_hour, quiet_end_hour, timezone } = req.body;
+  // nullable fields: pass null to clear, omit (undefined) to keep existing
+  const quietStart = quiet_start_hour === undefined ? undefined : (quiet_start_hour === null ? null : parseInt(quiet_start_hour, 10));
+  const quietEnd   = quiet_end_hour   === undefined ? undefined : (quiet_end_hour   === null ? null : parseInt(quiet_end_hour,   10));
+  const tz         = timezone === undefined ? undefined : (timezone || null);
   const { rows } = await pool.query(
     `UPDATE profiles SET
       name = COALESCE($1, name),
       ntfy_topic = COALESCE($2, ntfy_topic),
       send_frequency_minutes = COALESCE($3, send_frequency_minutes),
-      cycling_order = COALESCE($4, cycling_order)
+      cycling_order = COALESCE($4, cycling_order),
+      quiet_start_hour = CASE WHEN $6 THEN $7::integer ELSE quiet_start_hour END,
+      quiet_end_hour   = CASE WHEN $8 THEN $9::integer ELSE quiet_end_hour   END,
+      timezone         = CASE WHEN $10 THEN $11        ELSE timezone         END
      WHERE id = $5 RETURNING *`,
-    [name || null, ntfy_topic || null, send_frequency_minutes || null, cycling_order || null, req.params.id]
+    [
+      name || null, ntfy_topic || null, send_frequency_minutes || null, cycling_order || null,
+      req.params.id,
+      quietStart !== undefined, quietStart ?? null,
+      quietEnd   !== undefined, quietEnd   ?? null,
+      tz !== undefined, tz,
+    ]
   );
   res.json(rows[0]);
 });
@@ -82,6 +95,40 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   const { rowCount } = await pool.query('DELETE FROM profiles WHERE id = $1', [req.params.id]);
   if (!rowCount) return res.status(404).json({ error: 'Not found' });
   res.status(204).end();
+});
+
+// Generate or regenerate the device token for Tasker/phone automation
+router.post('/:id/device-token', requireAuth, async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM profiles WHERE id = $1', [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessProfile(req.user, rows[0])) return res.status(403).json({ error: 'Forbidden' });
+
+  const { randomBytes } = require('crypto');
+  const token = randomBytes(32).toString('hex');
+  const { rows: updated } = await pool.query(
+    'UPDATE profiles SET device_token = $1 WHERE id = $2 RETURNING *',
+    [token, req.params.id]
+  );
+  res.json(updated[0]);
+});
+
+// Update timezone via device token — called by Tasker/phone automation, no login required
+router.post('/:id/timezone', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  const token = auth.slice(7);
+
+  const { rows } = await pool.query(
+    'SELECT id FROM profiles WHERE id = $1 AND device_token = $2',
+    [req.params.id, token]
+  );
+  if (!rows[0]) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { timezone } = req.body;
+  if (!timezone) return res.status(400).json({ error: 'timezone required' });
+
+  await pool.query('UPDATE profiles SET timezone = $1 WHERE id = $2', [timezone, req.params.id]);
+  res.json({ ok: true });
 });
 
 // List facts in a profile (active only)

@@ -8,6 +8,10 @@ function formatFrequency(minutes) {
   return `${minutes}m`;
 }
 
+function formatHour(h) {
+  return `${String(h).padStart(2, '0')}:00`;
+}
+
 function toMinutes(value, unit) {
   return unit === 'hours' ? Math.round(parseFloat(value) * 60) : Math.round(parseFloat(value));
 }
@@ -92,6 +96,8 @@ export default function ProfileList() {
             <Link to={`/profiles/${p.id}`}><strong>{p.name}</strong></Link>
             <span style={{ marginLeft: '0.75rem', fontSize: '0.85rem', color: '#888' }}>
               {p.ntfy_topic} · every {formatFrequency(p.send_frequency_minutes)} · {p.cycling_order}
+              {p.quiet_start_hour != null && p.quiet_end_hour != null &&
+                ` · quiet ${formatHour(p.quiet_start_hour)}–${formatHour(p.quiet_end_hour)}`}
             </span>
           </li>
         ))}
