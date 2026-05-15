@@ -16,6 +16,10 @@ function HourSelect({ value, onChange }) {
   );
 }
 
+const UTC_OFFSET_HOURS = new Date().getTimezoneOffset() / 60;
+function localToUtc(h) { return (h + UTC_OFFSET_HOURS + 24) % 24; }
+function utcToLocal(h) { return (h - UTC_OFFSET_HOURS + 24) % 24; }
+
 function splitFrequency(minutes) {
   if (minutes % 60 === 0) return { freq_value: minutes / 60, freq_unit: 'hours' };
   return { freq_value: minutes, freq_unit: 'minutes' };
@@ -49,8 +53,8 @@ export default function ProfileDetail() {
         ...p,
         ...splitFrequency(p.send_frequency_minutes),
         quiet_enabled: p.quiet_start_hour != null && p.quiet_end_hour != null,
-        quiet_start_hour: p.quiet_start_hour ?? 21,
-        quiet_end_hour: p.quiet_end_hour ?? 9,
+        quiet_start_hour: p.quiet_start_hour != null ? utcToLocal(p.quiet_start_hour) : 22,
+        quiet_end_hour:   p.quiet_end_hour   != null ? utcToLocal(p.quiet_end_hour)   : 8,
       });
     }).catch(console.error);
     api.get(`/profiles/${id}/facts`).then(setProfileFacts).catch(console.error);
@@ -66,8 +70,8 @@ export default function ProfileDetail() {
         ntfy_topic: editForm.ntfy_topic,
         send_frequency_minutes: toMinutes(editForm.freq_value, editForm.freq_unit),
         cycling_order: editForm.cycling_order,
-        quiet_start_hour: editForm.quiet_enabled ? Number(editForm.quiet_start_hour) : null,
-        quiet_end_hour:   editForm.quiet_enabled ? Number(editForm.quiet_end_hour)   : null,
+        quiet_start_hour: editForm.quiet_enabled ? localToUtc(Number(editForm.quiet_start_hour)) : null,
+        quiet_end_hour:   editForm.quiet_enabled ? localToUtc(Number(editForm.quiet_end_hour))   : null,
       });
       setProfile(updated);
       setEditing(false);

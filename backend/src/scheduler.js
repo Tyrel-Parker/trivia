@@ -72,23 +72,10 @@ async function sendNotificationForProfile(profile) {
   await pool.query('UPDATE profiles SET last_notified_at = NOW() WHERE id = $1', [profile.id]);
 }
 
-function getLocalHour(timezone) {
-  if (!timezone) return new Date().getHours();
-  try {
-    const h = parseInt(
-      new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }).format(new Date()),
-      10
-    );
-    return h === 24 ? 0 : h; // some locales return 24 for midnight
-  } catch {
-    return new Date().getHours();
-  }
-}
-
-function isInQuietHours(startHour, endHour, timezone) {
+function isInQuietHours(startHour, endHour) {
   if (startHour == null || endHour == null) return false;
   if (startHour === endHour) return false;
-  const hour = getLocalHour(timezone);
+  const hour = new Date().getUTCHours();
   if (startHour < endHour) return hour >= startHour && hour < endHour;
   // wraps midnight
   return hour >= startHour || hour < endHour;
@@ -98,7 +85,7 @@ async function checkProfiles() {
   const { rows: profiles } = await pool.query('SELECT * FROM profiles');
 
   for (const profile of profiles) {
-    if (isInQuietHours(profile.quiet_start_hour, profile.quiet_end_hour, profile.timezone)) continue;
+    if (isInQuietHours(profile.quiet_start_hour, profile.quiet_end_hour)) continue;
 
     const frequencyMs = profile.send_frequency_minutes * 60 * 1000;
     const lastNotified = profile.last_notified_at ? new Date(profile.last_notified_at).getTime() : 0;

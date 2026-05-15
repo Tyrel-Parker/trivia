@@ -8,7 +8,9 @@ function formatFrequency(minutes) {
   return `${minutes}m`;
 }
 
-function formatHour(h) {
+const UTC_OFFSET_HOURS = new Date().getTimezoneOffset() / 60;
+function formatHour(utcH) {
+  const h = (utcH - UTC_OFFSET_HOURS + 24) % 24;
   return `${String(h).padStart(2, '0')}:00`;
 }
 
